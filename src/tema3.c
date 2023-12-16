@@ -40,6 +40,7 @@ mpi_datatypes_t *create_mpi_datatypes() {
 		displacements[1] = offsetof(mpi_files_info_t, files);
 		MPI_Datatype types[] = { MPI_INT, mpi_datatypes->mpi_file_info };
 		MPI_Type_create_struct(2, blocklengths, displacements, types, &mpi_datatypes->mpi_files_info);
+		MPI_Type_commit(&mpi_datatypes->mpi_files_info);
 	}
 
 	return mpi_datatypes;
