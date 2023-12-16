@@ -43,6 +43,17 @@ mpi_datatypes_t *create_mpi_datatypes() {
 		MPI_Type_commit(&mpi_datatypes->mpi_files_info);
 	}
 
+	// Create mpi_peer_request datatype
+	{
+		int blocklengths[] = { MAX_FILENAME, 1};
+		MPI_Aint displacements[2];
+		displacements[0] = offsetof(peer_request_t, filename);
+		displacements[1] = offsetof(peer_request_t, hash);
+		MPI_Datatype types[] = { MPI_CHAR, mpi_datatypes->mpi_hash };
+		MPI_Type_create_struct(2, blocklengths, displacements, types, &mpi_datatypes->mpi_peer_request);
+		MPI_Type_commit(&mpi_datatypes->mpi_peer_request);
+	}
+
 	return mpi_datatypes;
 }
 

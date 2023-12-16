@@ -54,16 +54,180 @@ void send_info_about_files(int rank, int numtasks, mpi_datatypes_t *mpi_datatype
 		memcpy(&files_info.files[i], &files[i], sizeof(file_info_t));
 	}
 
-	MPI_Send(&files_info, 1, mpi_datatypes->mpi_files_info, TRACKER_RANK, SEND_ALL_FILES_INFO, MPI_COMM_WORLD);
+	MPI_Send(&files_info, 1, mpi_datatypes->mpi_files_info, TRACKER_RANK, TAG_PEER_UPDATE_FILES_INFO, MPI_COMM_WORLD);
+}
+
+void get_info_about_wanted_files(file_info_t *files_to_download, int num_files_to_download,
+	int *finished_downloading, int ***peer_per_chuck, int num_peers, mpi_datatypes_t *mpi_datatypes) {
+
+	for (int i = 0; i < num_files_to_download; i++) {
+		if (finished_downloading[i])
+			continue;
+		MPI_Send(&files_to_download[i].filename, MAX_FILENAME, MPI_CHAR, TRACKER_RANK,
+			TAG_PEER_REQUEST_FILE_INFO_AND_PEERS, MPI_COMM_WORLD);
+	}
+
+	{
+		int max_peers_per_chunk = (num_peers + 1) * MAX_CHUNKS;
+		int flattened_peers_per_chunk[max_peers_per_chunk];
+
+		for (int i = 0; i < num_files_to_download; i++) {
+			if (finished_downloading[i])
+				continue;
+
+			// Receive file info
+			file_info_t file_info;
+			MPI_Recv(&file_info, 1, mpi_datatypes->mpi_file_info, TRACKER_RANK,
+				TAG_TRACKER_FILE_INFO, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+			// Copy file info
+			files_to_download[i].chunks_count = file_info.chunks_count;
+			strcpy(files_to_download[i].filename, file_info.filename);
+			for (int i = 0; i < files_to_download[i].chunks_count; i++) {
+				strcpy(files_to_download[i].hashes[i].str, file_info.hashes[i].str);
+			}
+
+			// Receive peers info
+			MPI_Status status;
+			MPI_Recv(flattened_peers_per_chunk, max_peers_per_chunk, MPI_INT,
+				TRACKER_RANK, TAG_TRACKER_PEERS_PER_CHUNK, MPI_COMM_WORLD, &status);
+
+			// Copy peers info
+			int num_chunks = status._ucount / (num_peers + 1);
+			files_to_download[i].chunks_count = num_chunks;
+			for (int j = 0; j < num_chunks; j++) {
+				for (int k = 0; k < num_peers; k++) {
+					peer_per_chuck[i][j][k] = flattened_peers_per_chunk[i * num_peers + j];
+				}
+			}
+		}
+	}
+}
+
+int check_if_finished_downloading_file(file_info_t file) {
+	for (int i = 0; i < file.chunks_count; i++) {
+		if (file.chuck_present[i] == 0)
+			return 0;
+	}
+	return 1;
+}
+
+int check_if_finished_downloading_all_files(int *finished_downloading, int num_files_to_download) {
+	for (int i = 0; i < num_files_to_download; i++) {
+		if (!finished_downloading[i])
+			return 0;
+	}
+	return 1;
+}
+
+void download_files(file_info_t *file_to_download, int num_files_to_download,
+	int *finished_downloading, int ***peer_per_chuck, int *last_peer_used, int num_peers, mpi_datatypes_t *mpi_datatypes) {
+
+	int num_downloaded_chunks = 0;
+	for (int i = 0; i < num_files_to_download; i++) {
+		if (num_downloaded_chunks == UPDATE_INTERVAL)
+			break;
+
+		if (finished_downloading[i])
+			continue;
+
+		for (int j = 0; j < file_to_download[i].chunks_count; j++) {
+			if (num_downloaded_chunks == UPDATE_INTERVAL)
+				break;
+
+			if (file_to_download[i].chuck_present[j])
+				continue;
+
+			// Find next peer to download from
+			int peer_index = last_peer_used[i];
+			while (peer_per_chuck[i][j][peer_index] == 0) {
+				peer_index = (peer_index + 1) % num_peers;
+			}
+			last_peer_used[i] = peer_index;
+
+			// Request chunk from peer
+			peer_request_t peer_request;
+			strcpy(peer_request.filename, file_to_download[i].filename);
+			strcpy(peer_request.hash.str, file_to_download[i].hashes[j].str);
+			MPI_Send(&peer_request, 1, mpi_datatypes->mpi_peer_request,
+				peer_index, TAG_PEER_REQUEST_CHUNK, MPI_COMM_WORLD);
+
+			// Receive chunk from peer
+			int received_chunk;
+			MPI_Recv(&received_chunk, 1, MPI_INT, peer_index, TAG_PEER_REQUEST_CHUNK, MPI_COMM_WORLD, TAG_PEER_FILE_REQ_RESPONSE);
+
+			if (received_chunk) {
+				file_to_download[i].chuck_present[j] = 1;
+				num_downloaded_chunks++;
+			}
+
+			if (check_if_finished_downloading_file(file_to_download[i])) {
+				finished_downloading[i] = 1;
+				MPI_Send(&file_to_download[i].filename, MAX_FILENAME, MPI_CHAR, TRACKER_RANK,
+					TAG_PEER_FINISHED_FILE, MPI_COMM_WORLD);
+
+				check_if_finished_downloading_all_files(finished_downloading, num_files_to_download);
+			}
+		}
+	}
 }
 
 void *download_thread_func(void *arg) {
-	
+	args_t *thread_args = (args_t *)arg;
+	int finished_downloading = 0;
+
+	int peer_per_chuck[MAX_FILES][MAX_CHUNKS][thread_args->num_peers + 1];
+	int last_peer_used[MAX_FILES] = { 0 };
+	int finished_downloading[MAX_FILES] = { 0 };
+
+	for (int i = 0; i < thread_args->num_files; i++) {
+		for (int j = 0; j < thread_args->files[i].chunks_count; j++) {
+			for (int k = 0; k < thread_args->num_peers; k++) {
+				peer_per_chuck[i][j][k] = 0;
+			}
+		}
+	}
+
+	while (!finished_downloading) {
+		// get info about wanted files
+		get_info_about_wanted_files(thread_args->files_to_download, thread_args->num_files_to_download,
+			finished_downloading, peer_per_chuck, thread_args->num_peers, thread_args->mpi_datatypes);
+
+		// download files
+		download_files(thread_args->files_to_download, thread_args->num_files_to_download,
+			finished_downloading, peer_per_chuck, last_peer_used, thread_args->num_peers, thread_args->mpi_datatypes);
+
+		// update tracker with info about downloaded segments
+		send_info_about_files(thread_args->rank, thread_args->num_peers,
+			thread_args->mpi_datatypes, thread_args->files_to_download, thread_args->num_files);
+	}
+
 	return NULL;
 }
 
 void *upload_thread_func(void *arg) {
+	args_t *thread_args = (args_t *)arg;
+	peer_request_t peer_request;
+	while (1) {
+		MPI_Status status;
+		MPI_Recv(&peer_request, 1, thread_args->mpi_datatypes->mpi_hash, MPI_ANY_SOURCE,
+			TAG_PEER_REQUEST_CHUNK, MPI_COMM_WORLD, &status);
 
+		int found = 0;
+		for (int i = 0; i < thread_args->num_files; i++) {
+			if (strcmp(thread_args->files[i].filename, peer_request.filename) == 0) {
+				for (int j = 0; j < thread_args->files[i].chunks_count; j++) {
+					if (strcmp(thread_args->files[i].hashes[j].str, peer_request.hash.str) == 0) {
+						found = 1;
+						break;
+					}
+				}
+				break;
+			}
+		}
+
+		MPI_Send(&found, 1, MPI_INT, status.MPI_SOURCE, TAG_PEER_FILE_REQ_RESPONSE, MPI_COMM_WORLD);
+	}
 	return NULL;
 }
 

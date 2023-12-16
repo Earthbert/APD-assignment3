@@ -7,8 +7,16 @@
 #define HASH_SIZE 32
 #define MAX_CHUNKS 100
 
-#define NO_CHUNKS -1
-#define SEND_ALL_FILES_INFO 0
+#define UPDATE_INTERVAL 10
+
+#define TAG_PEER_UPDATE_FILES_INFO 0
+#define TAG_PEER_REQUEST_FILE_INFO_AND_PEERS 1
+#define TAG_PEER_REQUEST_CHUNK 3
+#define TAG_PEER_FILE_REQ_RESPONSE 4
+#define TAG_PEER_FINISHED_FILE 5
+
+#define TAG_TRACKER_FILE_INFO 20
+#define TAG_TRACKER_PEERS_PER_CHUNK 21
 
 typedef struct {
 	char str[HASH_SIZE]; // chunk hash
@@ -33,9 +41,15 @@ typedef struct {
 } mpi_files_info_t;
 
 typedef struct {
+	char filename[MAX_FILENAME];
+	hash hash;
+} peer_request_t;
+
+typedef struct {
 	MPI_Datatype mpi_hash;
 	MPI_Datatype mpi_file_info;
 	MPI_Datatype mpi_files_info;
+	MPI_Datatype mpi_peer_request;
 } mpi_datatypes_t;
 
 typedef struct {
