@@ -2,6 +2,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 #include "bit_torrent.h"
 
@@ -31,7 +32,7 @@ void update_file_to_swarm(swarm_t *swarms, int *num_files, file_info_t *file_inf
 		for (int i = 0; i < file_info->chunks_count; i++) {
 			if (file_info->chuck_present[i] == 1) {
 				swarms[file_index].file.chuck_present[i] = 1;
-				strcpy(swarms[file_index].file.hashes[i], file_info->hashes[i]);
+				strcpy(swarms[file_index].file.hashes[i].str, file_info->hashes[i].str);
 			}
 		}
 	}
@@ -60,7 +61,7 @@ void tracker(int numtasks, int rank, mpi_datatypes_t *mpi_datatypes) {
 			update_file_to_swarm(swarms, &num_files, &files_info.files[j], sender_rank, num_peers);
 		}
 	}
-	
+
 	// Signal peers that tracker has received all files info
 	MPI_Bcast(NULL, 0, MPI_INT, TRACKER_RANK, MPI_COMM_WORLD);
 }

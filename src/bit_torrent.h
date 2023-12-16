@@ -11,9 +11,13 @@
 #define SEND_ALL_FILES_INFO 0
 
 typedef struct {
+	char str[HASH_SIZE]; // chunk hash
+} hash;
+
+typedef struct {
 	char filename[MAX_FILENAME]; // file name
 	char chuck_present[MAX_CHUNKS]; // which chunks are present
-	char hashes[MAX_CHUNKS][HASH_SIZE]; // file hashes
+	hash hashes[MAX_CHUNKS]; // file hashes
 	int chunks_count; // number of chunks
 } file_info_t; // file info
 
@@ -24,9 +28,15 @@ typedef struct {
 } swarm_t; // swarm info
 
 typedef struct {
-	int num_files;
-	file_info_t files[MAX_FILES];
+	int num_files; // number of files
+	file_info_t files[MAX_FILES]; // files info
 } mpi_files_info_t;
+
+typedef struct {
+	MPI_Datatype mpi_hash;
+	MPI_Datatype mpi_file_info;
+	MPI_Datatype mpi_files_info;
+} mpi_datatypes_t;
 
 typedef struct {
 	int rank; // peer rank
@@ -37,11 +47,6 @@ typedef struct {
 	file_info_t *files_to_download; // files to download
 	mpi_datatypes_t *mpi_datatypes; // mpi datatypes
 } args_t; // arguments for peer threads
-
-typedef struct {
-	MPI_Datatype mpi_file_info;
-	MPI_Datatype mpi_files_info;
-} mpi_datatypes_t;
 
 void peer(int numtasks, int rank, mpi_datatypes_t *mpi_datatypes);
 

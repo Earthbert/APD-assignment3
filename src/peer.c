@@ -26,7 +26,7 @@ args_t *prepare_thread_args(int rank, int numtasks, mpi_datatypes_t *mpi_datatyp
 		fscanf(f, "%s", files[i].filename);
 		fscanf(f, "%d", &files[i].chunks_count);
 		for (int j = 0; j < files[i].chunks_count; j++) {
-			fscanf(f, "%s", files[i].hashes[j]);
+			fscanf(f, "%s", files[i].hashes[j].str);
 			files[i].chuck_present[j] = 1;
 		}
 	}
@@ -58,13 +58,11 @@ void send_info_about_files(int rank, int numtasks, mpi_datatypes_t *mpi_datatype
 }
 
 void *download_thread_func(void *arg) {
-	int rank = *(int *)arg;
-
+	
 	return NULL;
 }
 
 void *upload_thread_func(void *arg) {
-	int rank = *(int *)arg;
 
 	return NULL;
 }
@@ -79,13 +77,13 @@ void peer(int numtasks, int rank, mpi_datatypes_t *mpi_datatypes) {
 
 	send_info_about_files(rank, numtasks, mpi_datatypes, thread_args->files, thread_args->num_files);
 
-	r = pthread_create((void *)thread_args, NULL, download_thread_func, (void *)&rank);
+	r = pthread_create((void *)&download_thread, NULL, download_thread_func, thread_args);
 	if (r) {
 		printf("Eroare la crearea thread-ului de download\n");
 		exit(-1);
 	}
 
-	r = pthread_create((void *)thread_args, NULL, upload_thread_func, (void *)&rank);
+	r = pthread_create((void *)&upload_thread, NULL, upload_thread_func, thread_args);
 	if (r) {
 		printf("Eroare la crearea thread-ului de upload\n");
 		exit(-1);
