@@ -84,9 +84,9 @@ void get_info_about_wanted_files(file_info_t *files_to_download, int num_files_t
 
 			// Copy file info
 			files_to_download[i].chunks_count = file_info.chunks_count;
-			strcpy(files_to_download[i].filename, file_info.filename);
+			strncpy(files_to_download[i].filename, file_info.filename, MAX_FILENAME);
 			for (int i = 0; i < files_to_download[i].chunks_count; i++) {
-				strcpy(files_to_download[i].hashes[i].str, file_info.hashes[i].str);
+				strncpy(files_to_download[i].hashes[i].str, file_info.hashes[i].str, HASH_SIZE);
 			}
 
 			// Receive peers info
@@ -145,32 +145,36 @@ void download_files(file_info_t *file_to_download, int num_files_to_download,
 			// Find next peer to download from
 			int peer_index = last_peer_used[i];
 			while (peer_per_chunk[i][j][peer_index] == 0) {
-				peer_index = (peer_index + 1) % num_peers;
+				peer_index = (peer_index + 1) % (num_peers + 1);
 			}
 			last_peer_used[i] = peer_index;
 
 			// Request chunk from peer
 			peer_request_t peer_request;
-			strcpy(peer_request.filename, file_to_download[i].filename);
-			strcpy(peer_request.hash.str, file_to_download[i].hashes[j].str);
+			strncpy(peer_request.filename, file_to_download[i].filename, MAX_FILENAME);
+			strncpy(peer_request.hash.str, file_to_download[i].hashes[j].str, HASH_SIZE);
 			MPI_Send(&peer_request, 1, mpi_datatypes->mpi_peer_request,
 				peer_index, TAG_PEER_REQUEST_CHUNK, MPI_COMM_WORLD);
 
 			// Receive chunk from peer
 			int received_chunk;
-			MPI_Recv(&received_chunk, 1, MPI_INT, peer_index, TAG_PEER_REQUEST_CHUNK,
+			MPI_Recv(&received_chunk, 1, MPI_INT, peer_index, TAG_PEER_FILE_REQ_RESPONSE,
 				MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+			printf("Received chunk %s from peer %d\n", file_to_download[i].hashes[j].str, peer_index);
 
 			if (received_chunk) {
 				file_to_download[i].chuck_present[j] = 1;
 				num_downloaded_chunks++;
 			}
 
+			// Check if finished downloading file
 			if (check_if_finished_downloading_file(file_to_download[i])) {
 				finished_downloading[i] = 1;
 				MPI_Send(&file_to_download[i].filename, MAX_FILENAME, MPI_CHAR, TRACKER_RANK,
 					TAG_PEER_FINISHED_FILE, MPI_COMM_WORLD);
 
+				// Check if finished downloading all files
 				if (check_if_finished_downloading_all_files(finished_downloading, num_files_to_download)) {
 					MPI_Send(NULL, 0, MPI_INT, TRACKER_RANK,
 						TAG_PEER_FINISHED_ALL_FILES, MPI_COMM_WORLD);
@@ -204,14 +208,12 @@ void *download_thread_func(void *arg) {
 		}
 	}
 
-	printf("Peer %d started downloading\n", thread_args->rank);
-
 	while (!end_job) {
 		// get info about wanted files
 		get_info_about_wanted_files(thread_args->files_to_download, thread_args->num_files_to_download,
 			finished_downloading, peer_per_chunk, thread_args->num_peers, thread_args->mpi_datatypes);
 
-		printf("Peer %d downloaded info about wanted files\n", thread_args->rank);
+		printf("PEER %d: downloaded info about wanted files\n", thread_args->rank);
 
 		// download files
 		download_files(thread_args->files_to_download, thread_args->num_files_to_download,
@@ -230,7 +232,7 @@ void *upload_thread_func(void *arg) {
 	peer_request_t peer_request;
 	while (*thread_args->end == 0) {
 		MPI_Status status;
-		MPI_Recv(&peer_request, 1, thread_args->mpi_datatypes->mpi_hash, MPI_ANY_SOURCE,
+		MPI_Recv(&peer_request, 1, thread_args->mpi_datatypes->mpi_peer_request, MPI_ANY_SOURCE,
 			TAG_PEER_REQUEST_CHUNK, MPI_COMM_WORLD, &status);
 
 		printf("Peer %d received request for chunk %s from peer %d\n", thread_args->rank,
