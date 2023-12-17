@@ -61,7 +61,7 @@ void write_file_to_disk(file_info_t *file) {
 	}
 
 	for (int i = 0; i < file->chunks_count; i++) {
-		fprintf(f, "%s\n", file->hashes[i].str);
+		fprintf(f, "%.32s\n", file->hashes[i].str);
 	}
 
 	fclose(f);
