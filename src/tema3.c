@@ -34,7 +34,7 @@ mpi_datatypes_t *create_mpi_datatypes() {
 
 	// Create mpi_peer_request datatype
 	{
-		int blocklengths[] = { MAX_FILENAME, 1};
+		int blocklengths[] = { MAX_FILENAME, 1 };
 		MPI_Aint displacements[2];
 		displacements[0] = offsetof(peer_request_t, filename);
 		displacements[1] = offsetof(peer_request_t, hash);
@@ -49,7 +49,12 @@ mpi_datatypes_t *create_mpi_datatypes() {
 int main(int argc, char *argv[]) {
 	int numtasks, rank;
 
-	MPI_Init(&argc, &argv);
+	int provided;
+	MPI_Init_thread(NULL, NULL, MPI_THREAD_MULTIPLE, &provided);
+	if (provided < MPI_THREAD_MULTIPLE) {
+		printf("Warning: The MPI implementation doesn't provide full thread support.\n");
+	}
+	
 	MPI_Comm_size(MPI_COMM_WORLD, &numtasks);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 

@@ -65,7 +65,7 @@ void get_info_about_wanted_files(file_info_t *files_to_download, int num_files_t
 	for (int i = 0; i < num_files_to_download; i++) {
 		if (finished_downloading[i])
 			continue;
-		MPI_Send(&files_to_download[i].filename, MAX_FILENAME, MPI_CHAR, TRACKER_RANK,
+		MPI_Send(files_to_download[i].filename, MAX_FILENAME, MPI_CHAR, TRACKER_RANK,
 			TAG_PEER_REQUEST_FILE_INFO_AND_PEERS, MPI_COMM_WORLD);
 	}
 
@@ -85,8 +85,8 @@ void get_info_about_wanted_files(file_info_t *files_to_download, int num_files_t
 			// Copy file info
 			files_to_download[i].chunks_count = file_info.chunks_count;
 			strncpy(files_to_download[i].filename, file_info.filename, MAX_FILENAME);
-			for (int i = 0; i < files_to_download[i].chunks_count; i++) {
-				strncpy(files_to_download[i].hashes[i].str, file_info.hashes[i].str, HASH_SIZE);
+			for (int j = 0; j < files_to_download[i].chunks_count; j++) {
+				strncpy(files_to_download[i].hashes[j].str, file_info.hashes[j].str, HASH_SIZE);
 			}
 
 			// Receive peers info
@@ -123,6 +123,13 @@ int check_if_finished_downloading_all_files(int *finished_downloading, int num_f
 	return 1;
 }
 
+void print_files_info(file_info_t *files, int num_files) {
+	for (int i = 0; i < num_files; i++) {
+		for (int j = 0; j < files[i].chunks_count; j++) {
+		}
+	}
+}
+
 void download_files(file_info_t *file_to_download, int num_files_to_download,
 	int *finished_downloading, int ***peer_per_chunk, int *last_peer_used,
 	int num_peers, mpi_datatypes_t *mpi_datatypes, int *end_job) {
@@ -145,7 +152,7 @@ void download_files(file_info_t *file_to_download, int num_files_to_download,
 			// Find next peer to download from
 			int peer_index = last_peer_used[i];
 			while (peer_per_chunk[i][j][peer_index] == 0) {
-				peer_index = (peer_index + 1) % (num_peers + 1);
+				peer_index = (peer_index + 1) % num_peers;
 			}
 			last_peer_used[i] = peer_index;
 
@@ -160,8 +167,6 @@ void download_files(file_info_t *file_to_download, int num_files_to_download,
 			int received_chunk;
 			MPI_Recv(&received_chunk, 1, MPI_INT, peer_index, TAG_PEER_FILE_REQ_RESPONSE,
 				MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-			printf("Received chunk %s from peer %d\n", file_to_download[i].hashes[j].str, peer_index);
 
 			if (received_chunk) {
 				file_to_download[i].chuck_present[j] = 1;
@@ -213,8 +218,6 @@ void *download_thread_func(void *arg) {
 		get_info_about_wanted_files(thread_args->files_to_download, thread_args->num_files_to_download,
 			finished_downloading, peer_per_chunk, thread_args->num_peers, thread_args->mpi_datatypes);
 
-		printf("PEER %d: downloaded info about wanted files\n", thread_args->rank);
-
 		// download files
 		download_files(thread_args->files_to_download, thread_args->num_files_to_download,
 			finished_downloading, peer_per_chunk, last_peer_used, thread_args->num_peers, thread_args->mpi_datatypes, &end_job);
@@ -235,14 +238,12 @@ void *upload_thread_func(void *arg) {
 		MPI_Recv(&peer_request, 1, thread_args->mpi_datatypes->mpi_peer_request, MPI_ANY_SOURCE,
 			TAG_PEER_REQUEST_CHUNK, MPI_COMM_WORLD, &status);
 
-		printf("Peer %d received request for chunk %s from peer %d\n", thread_args->rank,
-			peer_request.hash.str, status.MPI_SOURCE);
-
 		int found = 0;
 		for (int i = 0; i < thread_args->num_files; i++) {
-			if (strcmp(thread_args->files[i].filename, peer_request.filename) == 0) {
+			if (strncmp(thread_args->files[i].filename, peer_request.filename, MAX_FILENAME) == 0) {
 				for (int j = 0; j < thread_args->files[i].chunks_count; j++) {
-					if (strcmp(thread_args->files[i].hashes[j].str, peer_request.hash.str) == 0) {
+					if (strncmp(thread_args->files[i].hashes[j].str,
+						peer_request.hash.str, HASH_SIZE) == 0) {
 						found = 1;
 						break;
 					}
