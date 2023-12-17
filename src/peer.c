@@ -344,7 +344,7 @@ void *upload_thread_func(void *arg) {
 	MPI_Irecv(&peer_request, 1, thread_args->mpi_datatypes->mpi_peer_request, MPI_ANY_SOURCE,
 		TAG_PEER_REQUEST_CHUNK, MPI_COMM_WORLD, &request[REQ_TYPE_CHUNK]);
 
-	MPI_Irecv(NULL, 0, MPI_INT, MPI_ANY_SOURCE,
+	MPI_Irecv(NULL, 0, MPI_INT, TRACKER_RANK,
 		TAG_TRACKER_END, MPI_COMM_WORLD, &request[REQ_TYPE_FINISH]);
 
 	while (1) {
