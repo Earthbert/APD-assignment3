@@ -255,6 +255,20 @@ void *upload_thread_func(void *arg) {
 			}
 		}
 
+		for (int i = 0; i < thread_args->num_files_to_download; i++) {
+			if (strncmp(thread_args->files_to_download[i].filename, peer_request.filename, MAX_FILENAME) == 0) {
+				for (int j = 0; j < thread_args->files_to_download[i].chunks_count; j++) {
+					if (strncmp(thread_args->files_to_download[i].hashes[j].str,
+						peer_request.hash.str, HASH_SIZE) == 0 && thread_args->files_to_download[i].chuck_present[j] == 1) {
+						found = 1;
+						break;
+					}
+				}
+				break;
+			}
+		}
+
+
 		MPI_Send(&found, 1, MPI_INT, status.MPI_SOURCE, TAG_PEER_FILE_REQ_RESPONSE, MPI_COMM_WORLD);
 	}
 	return NULL;
