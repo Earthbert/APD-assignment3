@@ -15,10 +15,13 @@ args_t *prepare_thread_args(int rank, int numtasks, mpi_datatypes_t *mpi_datatyp
 		printf("Eroare la deschiderea fisierului %s\n", filename);
 		exit(-1);
 	}
+
 	args_t *thread_args = malloc(sizeof(args_t));
 	thread_args->rank = rank;
 	thread_args->num_peers = numtasks - 1;
 	thread_args->mpi_datatypes = mpi_datatypes;
+	thread_args->end = malloc(sizeof(int));
+	*thread_args->end = 0;
 
 	fscanf(f, "%d", &thread_args->num_files);
 	file_info_t *files = malloc(thread_args->num_files * sizeof(file_info_t));
@@ -48,13 +51,12 @@ args_t *prepare_thread_args(int rank, int numtasks, mpi_datatypes_t *mpi_datatyp
 }
 
 void send_info_about_files(int rank, int numtasks, mpi_datatypes_t *mpi_datatypes, file_info_t *files, int num_files) {
-	mpi_files_info_t files_info;
-	files_info.num_files = num_files;
+	file_info_t files_info[MAX_FILENAME];
 	for (int i = 0; i < num_files; i++) {
-		memcpy(&files_info.files[i], &files[i], sizeof(file_info_t));
+		memcpy(&files_info[i], &files[i], sizeof(file_info_t));
 	}
 
-	MPI_Send(&files_info, 1, mpi_datatypes->mpi_files_info, TRACKER_RANK, TAG_PEER_UPDATE_FILES_INFO, MPI_COMM_WORLD);
+	MPI_Send(&files_info, num_files, mpi_datatypes->mpi_file_info, TRACKER_RANK, TAG_PEER_UPDATE_FILES_INFO, MPI_COMM_WORLD);
 }
 
 void get_info_about_wanted_files(file_info_t *files_to_download, int num_files_to_download,
@@ -93,11 +95,13 @@ void get_info_about_wanted_files(file_info_t *files_to_download, int num_files_t
 				TRACKER_RANK, TAG_TRACKER_PEERS_PER_CHUNK, MPI_COMM_WORLD, &status);
 
 			// Copy peers info
-			int num_chunks = status._ucount / (num_peers + 1);
+			int count;
+			MPI_Get_count(&status, MPI_INT, &count);
+			int num_chunks = count / (num_peers + 1);
 			files_to_download[i].chunks_count = num_chunks;
 			for (int j = 0; j < num_chunks; j++) {
-				for (int k = 0; k < num_peers; k++) {
-					peer_per_chuck[i][j][k] = flattened_peers_per_chunk[i * num_peers + j];
+				for (int k = 0; k < num_peers + 1; k++) {
+					peer_per_chuck[i][j][k] = flattened_peers_per_chunk[i * (num_peers + 1) + j];
 				}
 			}
 		}
@@ -121,7 +125,8 @@ int check_if_finished_downloading_all_files(int *finished_downloading, int num_f
 }
 
 void download_files(file_info_t *file_to_download, int num_files_to_download,
-	int *finished_downloading, int ***peer_per_chuck, int *last_peer_used, int num_peers, mpi_datatypes_t *mpi_datatypes) {
+	int *finished_downloading, int ***peer_per_chunk, int *last_peer_used,
+	int num_peers, mpi_datatypes_t *mpi_datatypes, int *end_job) {
 
 	int num_downloaded_chunks = 0;
 	for (int i = 0; i < num_files_to_download; i++) {
@@ -140,7 +145,7 @@ void download_files(file_info_t *file_to_download, int num_files_to_download,
 
 			// Find next peer to download from
 			int peer_index = last_peer_used[i];
-			while (peer_per_chuck[i][j][peer_index] == 0) {
+			while (peer_per_chunk[i][j][peer_index] == 0) {
 				peer_index = (peer_index + 1) % num_peers;
 			}
 			last_peer_used[i] = peer_index;
@@ -154,7 +159,8 @@ void download_files(file_info_t *file_to_download, int num_files_to_download,
 
 			// Receive chunk from peer
 			int received_chunk;
-			MPI_Recv(&received_chunk, 1, MPI_INT, peer_index, TAG_PEER_REQUEST_CHUNK, MPI_COMM_WORLD, TAG_PEER_FILE_REQ_RESPONSE);
+			MPI_Recv(&received_chunk, 1, MPI_INT, peer_index, TAG_PEER_REQUEST_CHUNK,
+				MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
 			if (received_chunk) {
 				file_to_download[i].chuck_present[j] = 1;
@@ -166,7 +172,11 @@ void download_files(file_info_t *file_to_download, int num_files_to_download,
 				MPI_Send(&file_to_download[i].filename, MAX_FILENAME, MPI_CHAR, TRACKER_RANK,
 					TAG_PEER_FINISHED_FILE, MPI_COMM_WORLD);
 
-				check_if_finished_downloading_all_files(finished_downloading, num_files_to_download);
+				if (check_if_finished_downloading_all_files(finished_downloading, num_files_to_download)) {
+					MPI_Send(NULL, 0, MPI_INT, TRACKER_RANK,
+						TAG_PEER_FINISHED_ALL_FILES, MPI_COMM_WORLD);
+					*end_job = 1;
+				}
 			}
 		}
 	}
@@ -174,28 +184,35 @@ void download_files(file_info_t *file_to_download, int num_files_to_download,
 
 void *download_thread_func(void *arg) {
 	args_t *thread_args = (args_t *)arg;
-	int finished_downloading = 0;
+	int end_job = 0;
 
-	int peer_per_chuck[MAX_FILES][MAX_CHUNKS][thread_args->num_peers + 1];
 	int last_peer_used[MAX_FILES] = { 0 };
 	int finished_downloading[MAX_FILES] = { 0 };
 
+	int ***peer_per_chunk = malloc(sizeof(int **) * MAX_FILES);
+	for (int i = 0; i < MAX_FILES; i++) {
+		peer_per_chunk[i] = malloc(sizeof(int *) * MAX_CHUNKS);
+		for (int j = 0; j < MAX_CHUNKS; j++) {
+			peer_per_chunk[i][j] = malloc(sizeof(int) * (thread_args->num_peers + 1));
+		}
+	}
+
 	for (int i = 0; i < thread_args->num_files; i++) {
 		for (int j = 0; j < thread_args->files[i].chunks_count; j++) {
-			for (int k = 0; k < thread_args->num_peers; k++) {
-				peer_per_chuck[i][j][k] = 0;
+			for (int k = 0; k < thread_args->num_peers + 1; k++) {
+				peer_per_chunk[i][j][k] = 0;
 			}
 		}
 	}
 
-	while (!finished_downloading) {
+	while (!end_job) {
 		// get info about wanted files
 		get_info_about_wanted_files(thread_args->files_to_download, thread_args->num_files_to_download,
-			finished_downloading, peer_per_chuck, thread_args->num_peers, thread_args->mpi_datatypes);
+			finished_downloading, peer_per_chunk, thread_args->num_peers, thread_args->mpi_datatypes);
 
 		// download files
 		download_files(thread_args->files_to_download, thread_args->num_files_to_download,
-			finished_downloading, peer_per_chuck, last_peer_used, thread_args->num_peers, thread_args->mpi_datatypes);
+			finished_downloading, peer_per_chunk, last_peer_used, thread_args->num_peers, thread_args->mpi_datatypes, &end_job);
 
 		// update tracker with info about downloaded segments
 		send_info_about_files(thread_args->rank, thread_args->num_peers,
@@ -208,7 +225,7 @@ void *download_thread_func(void *arg) {
 void *upload_thread_func(void *arg) {
 	args_t *thread_args = (args_t *)arg;
 	peer_request_t peer_request;
-	while (1) {
+	while (*thread_args->end == 0) {
 		MPI_Status status;
 		MPI_Recv(&peer_request, 1, thread_args->mpi_datatypes->mpi_hash, MPI_ANY_SOURCE,
 			TAG_PEER_REQUEST_CHUNK, MPI_COMM_WORLD, &status);
@@ -241,6 +258,8 @@ void peer(int numtasks, int rank, mpi_datatypes_t *mpi_datatypes) {
 
 	send_info_about_files(rank, numtasks, mpi_datatypes, thread_args->files, thread_args->num_files);
 
+	MPI_Bcast(NULL, 0, MPI_INT, TRACKER_RANK, MPI_COMM_WORLD);
+
 	r = pthread_create((void *)&download_thread, NULL, download_thread_func, thread_args);
 	if (r) {
 		printf("Eroare la crearea thread-ului de download\n");
@@ -258,6 +277,9 @@ void peer(int numtasks, int rank, mpi_datatypes_t *mpi_datatypes) {
 		printf("Eroare la asteptarea thread-ului de download\n");
 		exit(-1);
 	}
+
+	MPI_Bcast(NULL, 0, MPI_INT, TRACKER_RANK, MPI_COMM_WORLD);
+	*thread_args->end = 1;
 
 	r = pthread_join(upload_thread, &status);
 	if (r) {

@@ -14,9 +14,17 @@
 #define TAG_PEER_REQUEST_CHUNK 3
 #define TAG_PEER_FILE_REQ_RESPONSE 4
 #define TAG_PEER_FINISHED_FILE 5
+#define TAG_PEER_FINISHED_ALL_FILES 6
 
 #define TAG_TRACKER_FILE_INFO 20
 #define TAG_TRACKER_PEERS_PER_CHUNK 21
+#define TAG_TRACKER_END 22
+
+#define REQ_TYPE_FILE_INFO 0
+#define REQ_TYPE_UPDATE_FILES 1
+#define REQ_TYPE_FINISHED_FILE 2
+#define REQ_TYPE_FINISHED_ALL 3
+#define NUM_REQUEST_TYPES 4
 
 typedef struct {
 	char str[HASH_SIZE]; // chunk hash
@@ -36,11 +44,6 @@ typedef struct {
 } swarm_t; // swarm info
 
 typedef struct {
-	int num_files; // number of files
-	file_info_t files[MAX_FILES]; // files info
-} mpi_files_info_t;
-
-typedef struct {
 	char filename[MAX_FILENAME];
 	hash hash;
 } peer_request_t;
@@ -48,7 +51,6 @@ typedef struct {
 typedef struct {
 	MPI_Datatype mpi_hash;
 	MPI_Datatype mpi_file_info;
-	MPI_Datatype mpi_files_info;
 	MPI_Datatype mpi_peer_request;
 } mpi_datatypes_t;
 
@@ -60,6 +62,7 @@ typedef struct {
 	file_info_t *files; // files info
 	file_info_t *files_to_download; // files to download
 	mpi_datatypes_t *mpi_datatypes; // mpi datatypes
+	int *end; // end job flag
 } args_t; // arguments for peer threads
 
 void peer(int numtasks, int rank, mpi_datatypes_t *mpi_datatypes);

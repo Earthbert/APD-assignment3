@@ -32,17 +32,6 @@ mpi_datatypes_t *create_mpi_datatypes() {
 		MPI_Type_commit(&mpi_datatypes->mpi_file_info);
 	}
 
-	// Create mpi_files_info datatype
-	{
-		int blocklengths[] = { 1, MAX_FILES };
-		MPI_Aint displacements[2];
-		displacements[0] = offsetof(mpi_files_info_t, num_files);
-		displacements[1] = offsetof(mpi_files_info_t, files);
-		MPI_Datatype types[] = { MPI_INT, mpi_datatypes->mpi_file_info };
-		MPI_Type_create_struct(2, blocklengths, displacements, types, &mpi_datatypes->mpi_files_info);
-		MPI_Type_commit(&mpi_datatypes->mpi_files_info);
-	}
-
 	// Create mpi_peer_request datatype
 	{
 		int blocklengths[] = { MAX_FILENAME, 1};
