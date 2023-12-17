@@ -59,7 +59,6 @@ typedef struct {
 } mpi_datatypes_t;
 
 typedef struct {
-	int rank; // peer rank
 	int num_peers; // number of peers
 	int num_files; // number of files
 	int num_files_to_download; // number of files to download
