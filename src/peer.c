@@ -238,6 +238,9 @@ void *upload_thread_func(void *arg) {
 		MPI_Recv(&peer_request, 1, thread_args->mpi_datatypes->mpi_peer_request, MPI_ANY_SOURCE,
 			TAG_PEER_REQUEST_CHUNK, MPI_COMM_WORLD, &status);
 
+		printf("PEER-UPLOAD %d: received request for file %s with hash %.32s\n",
+			thread_args->rank, peer_request.filename, peer_request.hash.str);
+
 		int found = 0;
 		for (int i = 0; i < thread_args->num_files; i++) {
 			if (strncmp(thread_args->files[i].filename, peer_request.filename, MAX_FILENAME) == 0) {
@@ -267,7 +270,7 @@ void peer(int numtasks, int rank, mpi_datatypes_t *mpi_datatypes) {
 
 	send_info_about_files(rank, numtasks, mpi_datatypes, thread_args->files, thread_args->num_files);
 
-	MPI_Bcast(NULL, 0, MPI_INT, TRACKER_RANK, MPI_COMM_WORLD);
+	MPI_Barrier(MPI_COMM_WORLD);
 
 	r = pthread_create((void *)&download_thread, NULL, download_thread_func, thread_args);
 	if (r) {
@@ -287,7 +290,7 @@ void peer(int numtasks, int rank, mpi_datatypes_t *mpi_datatypes) {
 		exit(-1);
 	}
 
-	MPI_Bcast(NULL, 0, MPI_INT, TRACKER_RANK, MPI_COMM_WORLD);
+	MPI_Barrier(MPI_COMM_WORLD);
 	*thread_args->end = 1;
 
 	r = pthread_join(upload_thread, &status);

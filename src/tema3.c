@@ -52,9 +52,10 @@ int main(int argc, char *argv[]) {
 	int provided;
 	MPI_Init_thread(NULL, NULL, MPI_THREAD_MULTIPLE, &provided);
 	if (provided < MPI_THREAD_MULTIPLE) {
-		printf("Warning: The MPI implementation doesn't provide full thread support.\n");
+		fprintf(stderr, "The MPI implementation doesn't provide full thread support.\n");
+		exit(-1);
 	}
-	
+
 	MPI_Comm_size(MPI_COMM_WORLD, &numtasks);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
