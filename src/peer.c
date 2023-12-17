@@ -6,6 +6,13 @@
 
 #include "bit_torrent.h"
 
+/**
+ * @brief Prepare thread arguments and read input from file
+ * @param rank rank of the peer
+ * @param numtasks number of peers
+ * @param mpi_datatypes mpi datatypes used for communication
+ * @return thread arguments
+ */
 args_t *prepare_thread_args(int rank, int numtasks, mpi_datatypes_t *mpi_datatypes) {
 	char filename[MAX_FILENAME] = "in";
 	sprintf(filename, "in%d.txt", rank);
@@ -47,6 +54,10 @@ args_t *prepare_thread_args(int rank, int numtasks, mpi_datatypes_t *mpi_datatyp
 	return thread_args;
 }
 
+/**
+ * @brief Write file hashes to disk
+ * @param file file info to write
+ */
 void write_file_to_disk(file_info_t *file) {
 	int rank;
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -67,7 +78,13 @@ void write_file_to_disk(file_info_t *file) {
 	fclose(f);
 }
 
-void send_info_about_files(int rank, mpi_datatypes_t *mpi_datatypes, file_info_t *files, int num_files) {
+/**
+ * @brief Send info about files to tracker
+ * @param mpi_datatypes mpi datatypes used for communication
+ * @param files information about files
+ * @param num_files number of files
+ */
+void send_info_about_files(mpi_datatypes_t *mpi_datatypes, file_info_t *files, int num_files) {
 	file_info_t files_info[MAX_FILENAME];
 	for (int i = 0; i < num_files; i++) {
 		memcpy(&files_info[i], &files[i], sizeof(file_info_t));
@@ -76,6 +93,16 @@ void send_info_about_files(int rank, mpi_datatypes_t *mpi_datatypes, file_info_t
 	MPI_Send(&files_info, num_files, mpi_datatypes->mpi_file_info, TRACKER_RANK, TAG_PEER_UPDATE_FILES_INFO, MPI_COMM_WORLD);
 }
 
+/**
+ * @brief Get info about wanted files from tracker. 
+ * It sends requests to tracker and receives info about files and peers.
+ * @param files_to_download array of files to download
+ * @param num_files_to_download number of files to download
+ * @param finished_downloading array of flags for finished downloading files
+ * @param peer_per_chunk flag map for which peers have which chunks
+ * @param num_peers number of peers
+ * @param mpi_datatypes mpi datatypes used for communication
+ */
 void get_info_about_wanted_files(file_info_t *files_to_download, int num_files_to_download,
 	int *finished_downloading, int ***peer_per_chunk, int num_peers, mpi_datatypes_t *mpi_datatypes) {
 
@@ -127,6 +154,11 @@ void get_info_about_wanted_files(file_info_t *files_to_download, int num_files_t
 	}
 }
 
+/**
+ * @brief Check if all chunks of a file were downloaded
+ * @param file file info to check
+ * @return 1 if all chunks were downloaded, 0 otherwise
+ */
 int check_if_finished_downloading_file(file_info_t file) {
 	for (int i = 0; i < file.chunks_count; i++) {
 		if (file.chuck_present[i] == 0)
@@ -135,7 +167,18 @@ int check_if_finished_downloading_file(file_info_t file) {
 	return 1;
 }
 
-void download_files(file_info_t *file_to_download, int num_files_to_download,
+/**
+ * @brief Download a speficied number of chunks from a file(UPDATE_INTERVAL) of chunks
+ * @param files_to_download array of files to download
+ * @param num_files_to_download number of files to download
+ * @param finished_downloading array of flags for finished downloading files
+ * @param peer_per_chunk flag map for which peers have which chunks
+ * @param last_peer_used last peer used for downloading a chunk from a specific file
+ * @param num_peers number of peers
+ * @param mpi_datatypes mpi datatypes used for communication
+ * @param end_job flag for ending the downloading job
+ */
+void download_files(file_info_t *files_to_download, int num_files_to_download,
 	int *finished_downloading, int ***peer_per_chunk, int *last_peer_used,
 	int num_peers, mpi_datatypes_t *mpi_datatypes, int *end_job) {
 
@@ -150,11 +193,11 @@ void download_files(file_info_t *file_to_download, int num_files_to_download,
 		if (finished_downloading[i])
 			continue;
 
-		for (int j = 0; j < file_to_download[i].chunks_count; j++) {
+		for (int j = 0; j < files_to_download[i].chunks_count; j++) {
 			if (num_downloaded_chunks == UPDATE_INTERVAL)
 				break;
 
-			if (file_to_download[i].chuck_present[j])
+			if (files_to_download[i].chuck_present[j])
 				continue;
 
 			// Find next peer to download from
@@ -166,8 +209,8 @@ void download_files(file_info_t *file_to_download, int num_files_to_download,
 
 			// Request chunk from peer
 			peer_request_t peer_request;
-			strncpy(peer_request.filename, file_to_download[i].filename, MAX_FILENAME);
-			strncpy(peer_request.hash.str, file_to_download[i].hashes[j].str, HASH_SIZE);
+			strncpy(peer_request.filename, files_to_download[i].filename, MAX_FILENAME);
+			strncpy(peer_request.hash.str, files_to_download[i].hashes[j].str, HASH_SIZE);
 			MPI_Send(&peer_request, 1, mpi_datatypes->mpi_peer_request,
 				peer_index, TAG_PEER_REQUEST_CHUNK, MPI_COMM_WORLD);
 
@@ -177,7 +220,7 @@ void download_files(file_info_t *file_to_download, int num_files_to_download,
 				MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
 			if (received_chunk) {
-				file_to_download[i].chuck_present[j] = 1;
+				files_to_download[i].chuck_present[j] = 1;
 				num_downloaded_chunks++;
 			}
 		}
@@ -186,11 +229,11 @@ void download_files(file_info_t *file_to_download, int num_files_to_download,
 	int has_all_files = 1;
 	for (int i = 0; i < num_files_to_download; i++) {
 		// Check if finished downloading file
-		if (check_if_finished_downloading_file(file_to_download[i])) {
+		if (check_if_finished_downloading_file(files_to_download[i])) {
 			finished_downloading[i] = 1;
-			MPI_Send(&file_to_download[i].filename, MAX_FILENAME, MPI_CHAR, TRACKER_RANK,
+			MPI_Send(&files_to_download[i].filename, MAX_FILENAME, MPI_CHAR, TRACKER_RANK,
 				TAG_PEER_FINISHED_FILE, MPI_COMM_WORLD);
-			write_file_to_disk(&file_to_download[i]);
+			write_file_to_disk(&files_to_download[i]);
 		} else
 			has_all_files = 0;
 	}
@@ -201,6 +244,11 @@ void download_files(file_info_t *file_to_download, int num_files_to_download,
 	}
 }
 
+/**
+ * @brief thread function for downloading files and sending info to tracker
+ * @param arg thread arguments
+ * @return NULL
+ */
 void *download_thread_func(void *arg) {
 	args_t *thread_args = (args_t *)arg;
 	int end_job = 0;
@@ -237,13 +285,19 @@ void *download_thread_func(void *arg) {
 			finished_downloading, peer_per_chunk, last_peer_used, thread_args->num_peers, thread_args->mpi_datatypes, &end_job);
 
 		// update tracker with info about downloaded segments
-		send_info_about_files(rank, thread_args->mpi_datatypes,
+		send_info_about_files(thread_args->mpi_datatypes,
 			thread_args->files_to_download, thread_args->num_files_to_download);
 	}
 
 	return NULL;
 }
 
+/**
+ * @brief Handle peer chunk request
+ * @param thread_args thread arguments
+ * @param status mpi status
+ * @param peer_request peer request(file name and chunk hash)
+ */
 void handle_peer_chunk_request(args_t *thread_args, MPI_Status status, peer_request_t peer_request) {
 	int rank;
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -278,6 +332,11 @@ void handle_peer_chunk_request(args_t *thread_args, MPI_Status status, peer_requ
 	MPI_Send(&found, 1, MPI_INT, status.MPI_SOURCE, TAG_PEER_FILE_REQ_RESPONSE, MPI_COMM_WORLD);
 }
 
+/**
+ * @brief thread function for uploading files
+ * @param arg thread arguments
+ * @return NULL
+ */
 void *upload_thread_func(void *arg) {
 	args_t *thread_args = (args_t *)arg;
 	MPI_Request request[NUM_PEER_REQUEST_TYPES];
@@ -306,6 +365,12 @@ void *upload_thread_func(void *arg) {
 	return NULL;
 }
 
+/**
+ * @brief Peer function
+ * @param numtasks number of peers including tracker
+ * @param rank rank of this peer
+ * @param mpi_datatypes mpi datatypes used for communication
+ */
 void peer(int numtasks, int rank, mpi_datatypes_t *mpi_datatypes) {
 	pthread_t download_thread;
 	pthread_t upload_thread;
@@ -314,7 +379,7 @@ void peer(int numtasks, int rank, mpi_datatypes_t *mpi_datatypes) {
 
 	args_t *thread_args = prepare_thread_args(rank, numtasks, mpi_datatypes);
 
-	send_info_about_files(rank, mpi_datatypes, thread_args->files, thread_args->num_files);
+	send_info_about_files(mpi_datatypes, thread_args->files, thread_args->num_files);
 
 	MPI_Barrier(MPI_COMM_WORLD);
 

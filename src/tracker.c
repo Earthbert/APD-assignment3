@@ -6,6 +6,11 @@
 
 #include "bit_torrent.h"
 
+/**
+ * @brief Initalize swarms array, swarm contains info about file and peers
+ * @param swarms swarm array
+ * @param num_peers number of peers
+ */
 void initalize_swarms(swarm_t *swarms, int num_peers) {
 	for (int i = 0; i < MAX_FILES; i++) {
 		swarms[i].peers = calloc((num_peers + 1), sizeof(int));
@@ -16,6 +21,14 @@ void initalize_swarms(swarm_t *swarms, int num_peers) {
 	}
 }
 
+/**
+ * @brief Update file info to swarms array, it is called when peer sends file info
+ * @param swarms swarm array
+ * @param num_files number of files
+ * @param file_info file info to be added
+ * @param sender_rank rank of peer that sent file info
+ * @param num_peers number of peers
+ */
 void update_file_to_swarm(swarm_t *swarms, int *num_files, file_info_t *file_info, int sender_rank, int num_peers) {
 	int file_index = -1;
 	for (int i = 0; i < *num_files; i++) {
@@ -44,6 +57,16 @@ void update_file_to_swarm(swarm_t *swarms, int *num_files, file_info_t *file_inf
 	}
 }
 
+/**
+ * @brief Handle request for file info and peers,
+ * it is called when peer requests file info and peers
+ * @param status mpi status, used to get rank of peer that sent request
+ * @param requested_file_name requested file name
+ * @param swarms swarm array
+ * @param num_peers number of peers
+ * @param num_files number of files
+ * @param mpi_datatypes mpi datatypes used for communication
+ */
 void handle_request_file_info_and_peers(MPI_Status status, char *requested_file_name,
 	swarm_t *swarms, int num_peers, int num_files, mpi_datatypes_t *mpi_datatypes) {
 	int file_index = -1;
@@ -74,6 +97,15 @@ void handle_request_file_info_and_peers(MPI_Status status, char *requested_file_
 	MPI_Send(flattened_peers_per_chunk, num_peers_per_chunk, MPI_INT, recv_rank, TAG_TRACKER_PEERS_PER_CHUNK, MPI_COMM_WORLD);
 }
 
+/**
+ * @brief Handle update files info, it is called when peer sends files info
+ * @param status mpi status, used to get rank of peer that sent request and count of files
+ * @param files_info files info to be added
+ * @param swarms swarm array
+ * @param num_peers number of peers
+ * @param num_files number of files
+ * @param mpi_datatypes mpi datatypes used for communication
+ */
 void handle_update_files_info(MPI_Status status, file_info_t *files_info,
 	swarm_t *swarms, int num_peers, int *num_files, mpi_datatypes_t *mpi_datatypes) {
 
@@ -84,6 +116,15 @@ void handle_update_files_info(MPI_Status status, file_info_t *files_info,
 	}
 }
 
+/**
+ * @brief Handle finished file, it is called when peer sends finished file
+ * @param status mpi status, used to get rank of peer that sent request
+ * @param finished_file_name finished file name
+ * @param swarms swarm array
+ * @param num_peers number of peers
+ * @param num_files number of files
+ * @param mpi_datatypes mpi datatypes used for communication
+ */
 void handle_finished_file(MPI_Status status, char *finished_file_name,
 	swarm_t *swarms, int num_peers, int num_files, mpi_datatypes_t *mpi_datatypes) {
 	int file_index = -1;
@@ -105,6 +146,12 @@ void handle_finished_file(MPI_Status status, char *finished_file_name,
 	}
 }
 
+/**
+ * @brief Check if all peers finished, it is called when peer sends finished all files
+ * @param finished_peers finished peers array, 1 if peer finished, 0 otherwise
+ * @param num_peers number of peers
+ * @return 1 if all peers finished, 0 otherwise
+ */
 int check_if_all_peers_finished(int *finished_peers, int num_peers) {
 	for (int i = 0; i < num_peers; i++) {
 		if (finished_peers[i + 1] == 0)
@@ -113,6 +160,12 @@ int check_if_all_peers_finished(int *finished_peers, int num_peers) {
 	return 1;
 }
 
+/**
+ * @brief Tracker main function
+ * @param numtasks number of peers + 1
+ * @param rank rank of tracker
+ * @param mpi_datatypes mpi datatypes used for communication
+ */
 void tracker(int numtasks, int rank, mpi_datatypes_t *mpi_datatypes) {
 	int num_peers = numtasks - 1;
 
