@@ -75,12 +75,12 @@ void handle_request_file_info_and_peers(MPI_Status status, char *requested_file_
 }
 
 void handle_update_files_info(MPI_Status status, file_info_t *files_info,
-	swarm_t *swarms, int num_peers, mpi_datatypes_t *mpi_datatypes) {
+	swarm_t *swarms, int num_peers, int *num_files, mpi_datatypes_t *mpi_datatypes) {
 
-	int num_files;
-	MPI_Get_count(&status, mpi_datatypes->mpi_file_info, &num_files);
-	for (int i = 0; i < num_files; i++) {
-		update_file_to_swarm(swarms, &num_files, &files_info[i], status.MPI_SOURCE, num_peers);
+	int num_updated_files = 0;
+	MPI_Get_count(&status, mpi_datatypes->mpi_file_info, &num_updated_files);
+	for (int i = 0; i < num_updated_files; i++) {
+		update_file_to_swarm(swarms, num_files, &files_info[i], status.MPI_SOURCE, num_peers);
 	}
 }
 
@@ -95,7 +95,7 @@ void handle_finished_file(MPI_Status status, char *finished_file_name,
 	}
 	if (file_index == -1) {
 		fprintf(stderr, "File %s not found\n", finished_file_name);
-		return;
+		exit(-1);
 	}
 
 	int recv_rank = status.MPI_SOURCE;
@@ -161,6 +161,9 @@ void tracker(int numtasks, int rank, mpi_datatypes_t *mpi_datatypes) {
 			TAG_PEER_FINISHED_ALL_FILES, MPI_COMM_WORLD, &requests[REQ_TYPE_FINISHED_ALL]);
 
 		while (1) {
+			for (int i = 0; i < num_files; i++) {
+				printf("TRACKER: File[%d] %s\n", i, swarms[i].file.filename);
+			}
 			// Receive requests from peers
 			int index;
 			MPI_Status status;
@@ -180,8 +183,9 @@ void tracker(int numtasks, int rank, mpi_datatypes_t *mpi_datatypes) {
 					TAG_PEER_REQUEST_FILE_INFO_AND_PEERS, MPI_COMM_WORLD, &requests[REQ_TYPE_FILE_INFO]);
 				break;
 			case REQ_TYPE_UPDATE_FILES:
-				handle_update_files_info(status, files_info, swarms, num_peers, mpi_datatypes);
-
+				handle_update_files_info(status, files_info, swarms, num_peers, &num_files, mpi_datatypes);
+				printf("TRACKER: Received files info from %d\n",
+					status.MPI_SOURCE);
 				MPI_Irecv(files_info, MAX_FILES, mpi_datatypes->mpi_file_info, MPI_ANY_SOURCE,
 					TAG_PEER_UPDATE_FILES_INFO, MPI_COMM_WORLD, &requests[REQ_TYPE_UPDATE_FILES]);
 				break;

@@ -81,6 +81,7 @@ void get_info_about_wanted_files(file_info_t *files_to_download, int num_files_t
 				continue;
 
 			// Receive file info
+			printf("PEER %d: Waiting for info about file %s\n", rank, files_to_download[i].filename);
 			file_info_t file_info;
 			MPI_Recv(&file_info, 1, mpi_datatypes->mpi_file_info, TRACKER_RANK,
 				TAG_TRACKER_FILE_INFO, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
