@@ -238,8 +238,8 @@ void *upload_thread_func(void *arg) {
 		MPI_Recv(&peer_request, 1, thread_args->mpi_datatypes->mpi_peer_request, MPI_ANY_SOURCE,
 			TAG_PEER_REQUEST_CHUNK, MPI_COMM_WORLD, &status);
 
-		printf("PEER-UPLOAD %d: received request for file %s with hash %.32s\n",
-			thread_args->rank, peer_request.filename, peer_request.hash.str);
+		printf("PEER-UPLOAD %d: received request for file %s with hash %.32s\n, from peer %d\n",
+			thread_args->rank, peer_request.filename, peer_request.hash.str, status.MPI_SOURCE);
 
 		int found = 0;
 		for (int i = 0; i < thread_args->num_files; i++) {

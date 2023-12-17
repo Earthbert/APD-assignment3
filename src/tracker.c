@@ -144,7 +144,6 @@ void tracker(int numtasks, int rank, mpi_datatypes_t *mpi_datatypes) {
 	// Main loop
 	{
 		MPI_Request requests[NUM_REQUEST_TYPES];
-		MPI_Status statuses[NUM_REQUEST_TYPES];
 		char requested_file_name[MAX_FILENAME];
 		char finished_file_name[MAX_FILENAME];
 		file_info_t files_info[MAX_FILENAME];
@@ -164,49 +163,46 @@ void tracker(int numtasks, int rank, mpi_datatypes_t *mpi_datatypes) {
 		while (1) {
 			// Receive requests from peers
 			int index;
-			MPI_Waitany(NUM_REQUEST_TYPES, requests, &index, statuses);
+			MPI_Status status;
+			MPI_Waitany(NUM_REQUEST_TYPES, requests, &index, &status);
 
 			switch (index) {
 			case REQ_TYPE_FILE_INFO:
-				handle_request_file_info_and_peers(statuses[REQ_TYPE_FILE_INFO],
-					requested_file_name, swarms, num_peers, num_files, mpi_datatypes);
+				handle_request_file_info_and_peers(status, requested_file_name, swarms, num_peers, num_files, mpi_datatypes);
 
 				printf("TRACKER: Received request for file info %s from %d\n",
-					requested_file_name, statuses[REQ_TYPE_FILE_INFO].MPI_SOURCE);
+					requested_file_name, status.MPI_SOURCE);
 
 				MPI_Irecv(requested_file_name, MAX_FILENAME, MPI_CHAR, MPI_ANY_SOURCE,
 					TAG_PEER_REQUEST_FILE_INFO_AND_PEERS, MPI_COMM_WORLD, &requests[REQ_TYPE_FILE_INFO]);
 				break;
 			case REQ_TYPE_UPDATE_FILES:
-				handle_update_files_info(statuses[REQ_TYPE_UPDATE_FILES],
-					files_info, swarms, num_peers, mpi_datatypes);
+				handle_update_files_info(status, files_info, swarms, num_peers, mpi_datatypes);
 
-				printf("TRACKER: Received update files info from %d\n",
-					statuses[REQ_TYPE_UPDATE_FILES].MPI_SOURCE);
+				printf("TRACKER: Received update files info from %d\n", status.MPI_SOURCE);
 
 				MPI_Irecv(files_info, MAX_FILES, mpi_datatypes->mpi_file_info, MPI_ANY_SOURCE,
 					TAG_PEER_UPDATE_FILES_INFO, MPI_COMM_WORLD, &requests[REQ_TYPE_UPDATE_FILES]);
 				break;
 			case REQ_TYPE_FINISHED_FILE:
-				handle_finished_file(statuses[REQ_TYPE_FINISHED_FILE],
-					finished_file_name, swarms, num_peers, num_files, mpi_datatypes);
+				handle_finished_file(status, finished_file_name, swarms, num_peers, num_files, mpi_datatypes);
 
 				printf("TRACKER: Received finished file %s from %d\n",
-					finished_file_name, statuses[REQ_TYPE_FINISHED_FILE].MPI_SOURCE);
+					finished_file_name, status.MPI_SOURCE);
 
 				MPI_Irecv(finished_file_name, MAX_FILENAME, MPI_CHAR, MPI_ANY_SOURCE,
 					TAG_PEER_FINISHED_FILE, MPI_COMM_WORLD, &requests[REQ_TYPE_FINISHED_FILE]);
 
 				break;
 			case REQ_TYPE_FINISHED_ALL:
-				finished_peers[statuses[REQ_TYPE_FINISHED_ALL].MPI_SOURCE] = 1;
+				finished_peers[status.MPI_SOURCE] = 1;
 				if (check_if_all_peers_finished(finished_peers, num_peers) == 1) {
 					MPI_Barrier(MPI_COMM_WORLD);
 					return;
 				}
 
 				printf("TRACKER: Received finished all files from %d\n",
-					statuses[REQ_TYPE_FINISHED_ALL].MPI_SOURCE);
+					status.MPI_SOURCE);
 
 				MPI_Irecv(NULL, 0, MPI_INT, MPI_ANY_SOURCE,
 					TAG_PEER_FINISHED_ALL_FILES, MPI_COMM_WORLD, &requests[REQ_TYPE_FINISHED_ALL]);
