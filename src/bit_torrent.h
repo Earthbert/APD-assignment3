@@ -26,6 +26,10 @@
 #define REQ_TYPE_FINISHED_ALL 3
 #define NUM_REQUEST_TYPES 4
 
+#define REQ_TYPE_CHUNK 0
+#define REQ_TYPE_FINISH 1
+#define NUM_PEER_REQUEST_TYPES 2
+
 typedef struct {
 	char str[HASH_SIZE]; // chunk hash
 } hash;
@@ -62,7 +66,6 @@ typedef struct {
 	file_info_t *files; // files info
 	file_info_t *files_to_download; // files to download
 	mpi_datatypes_t *mpi_datatypes; // mpi datatypes
-	int *end; // end job flag
 } args_t; // arguments for peer threads
 
 void peer(int numtasks, int rank, mpi_datatypes_t *mpi_datatypes);
