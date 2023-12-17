@@ -1,4 +1,4 @@
-CFLAG = -Wall
+CFLAG = -Wall -g
 
 EXEC = tema3
 
