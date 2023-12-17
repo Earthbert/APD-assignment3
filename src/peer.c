@@ -48,7 +48,7 @@ args_t *prepare_thread_args(int rank, int numtasks, mpi_datatypes_t *mpi_datatyp
 	return thread_args;
 }
 
-void send_info_about_files(int rank, int numtasks, mpi_datatypes_t *mpi_datatypes, file_info_t *files, int num_files) {
+void send_info_about_files(int rank, mpi_datatypes_t *mpi_datatypes, file_info_t *files, int num_files) {
 	file_info_t files_info[MAX_FILENAME];
 	for (int i = 0; i < num_files; i++) {
 		memcpy(&files_info[i], &files[i], sizeof(file_info_t));
@@ -123,21 +123,6 @@ int check_if_finished_downloading_file(file_info_t file) {
 	return 1;
 }
 
-int check_if_finished_downloading_all_files(int *finished_downloading, int num_files_to_download) {
-	for (int i = 0; i < num_files_to_download; i++) {
-		if (!finished_downloading[i])
-			return 0;
-	}
-	return 1;
-}
-
-void print_files_info(file_info_t *files, int num_files) {
-	for (int i = 0; i < num_files; i++) {
-		for (int j = 0; j < files[i].chunks_count; j++) {
-		}
-	}
-}
-
 void download_files(file_info_t *file_to_download, int num_files_to_download,
 	int *finished_downloading, int ***peer_per_chunk, int *last_peer_used,
 	int num_peers, mpi_datatypes_t *mpi_datatypes, int *end_job) {
@@ -187,21 +172,23 @@ void download_files(file_info_t *file_to_download, int num_files_to_download,
 				file_to_download[i].chuck_present[j] = 1;
 				num_downloaded_chunks++;
 			}
-
-			// Check if finished downloading file
-			if (check_if_finished_downloading_file(file_to_download[i])) {
-				finished_downloading[i] = 1;
-				MPI_Send(&file_to_download[i].filename, MAX_FILENAME, MPI_CHAR, TRACKER_RANK,
-					TAG_PEER_FINISHED_FILE, MPI_COMM_WORLD);
-
-				// Check if finished downloading all files
-				if (check_if_finished_downloading_all_files(finished_downloading, num_files_to_download)) {
-					MPI_Send(NULL, 0, MPI_INT, TRACKER_RANK,
-						TAG_PEER_FINISHED_ALL_FILES, MPI_COMM_WORLD);
-					*end_job = 1;
-				}
-			}
 		}
+	}
+
+	int has_all_files = 1;
+	for (int i = 0; i < num_files_to_download; i++) {
+		// Check if finished downloading file
+		if (check_if_finished_downloading_file(file_to_download[i])) {
+			finished_downloading[i] = 1;
+			MPI_Send(&file_to_download[i].filename, MAX_FILENAME, MPI_CHAR, TRACKER_RANK,
+				TAG_PEER_FINISHED_FILE, MPI_COMM_WORLD);
+		} else
+			has_all_files = 0;
+	}
+
+	if (has_all_files) {
+		*end_job = 1;
+		MPI_Send(NULL, 0, MPI_INT, TRACKER_RANK, TAG_PEER_FINISHED_ALL_FILES, MPI_COMM_WORLD);
 	}
 }
 
@@ -240,8 +227,8 @@ void *download_thread_func(void *arg) {
 		printf("PEER-DOWNLOAD %d: End batch downloading\n", thread_args->rank);
 
 		// update tracker with info about downloaded segments
-		send_info_about_files(thread_args->rank, thread_args->num_peers,
-			thread_args->mpi_datatypes, thread_args->files_to_download, thread_args->num_files);
+		send_info_about_files(thread_args->rank, thread_args->mpi_datatypes,
+			thread_args->files_to_download, thread_args->num_files_to_download);
 	}
 
 	return NULL;
@@ -317,7 +304,7 @@ void peer(int numtasks, int rank, mpi_datatypes_t *mpi_datatypes) {
 
 	args_t *thread_args = prepare_thread_args(rank, numtasks, mpi_datatypes);
 
-	send_info_about_files(rank, numtasks, mpi_datatypes, thread_args->files, thread_args->num_files);
+	send_info_about_files(rank, mpi_datatypes, thread_args->files, thread_args->num_files);
 
 	MPI_Barrier(MPI_COMM_WORLD);
 
