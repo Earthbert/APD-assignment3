@@ -67,7 +67,7 @@ void write_file_to_disk(file_info_t *file) {
 
 	FILE *f = fopen(filename, "w");
 	if (f == NULL) {
-		printf("Eroare la deschiderea fisierului %s\n", filename);
+		printf("Error opening file %s\n", filename);
 		exit(-1);
 	}
 
@@ -94,7 +94,7 @@ void send_info_about_files(mpi_datatypes_t *mpi_datatypes, file_info_t *files, i
 }
 
 /**
- * @brief Get info about wanted files from tracker. 
+ * @brief Get info about wanted files from tracker.
  * It sends requests to tracker and receives info about files and peers.
  * @param files_to_download array of files to download
  * @param num_files_to_download number of files to download
@@ -385,25 +385,25 @@ void peer(int numtasks, int rank, mpi_datatypes_t *mpi_datatypes) {
 
 	r = pthread_create((void *)&download_thread, NULL, download_thread_func, thread_args);
 	if (r) {
-		printf("Eroare la crearea thread-ului de download\n");
+		printf("Error creating download thread\n");
 		exit(-1);
 	}
 
 	r = pthread_create((void *)&upload_thread, NULL, upload_thread_func, thread_args);
 	if (r) {
-		printf("Eroare la crearea thread-ului de upload\n");
+		printf("Error creating upload thread\n");
 		exit(-1);
 	}
 
 	r = pthread_join(download_thread, &status);
 	if (r) {
-		printf("Eroare la asteptarea thread-ului de download\n");
+		printf("Error waiting for the download thread\n");
 		exit(-1);
 	}
 
 	r = pthread_join(upload_thread, &status);
 	if (r) {
-		printf("Eroare la asteptarea thread-ului de upload\n");
+		printf("Error waiting for the upload thread\n");
 		exit(-1);
 	}
 }
